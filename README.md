@@ -3,6 +3,8 @@
 一个可以真正拿来用的群组聊天应用：真实后端、真实数据库、真实鉴权、一键容器化部署。
 名字取自「拾起每一句话」，界面走中性灰阶 + 单一强调色，浅色 / 深色双主题。
 
+支持群聊与**一对一私聊**；每个用户有唯一的**拾语号**（100001 起），每个群/会话有唯一的**群号**（500001 起），都能被搜索。
+
 ---
 
 ## 技术栈
@@ -72,17 +74,22 @@ cp .env.example .env
 openssl rand -hex 32
 # 同时把 POSTGRES_PASSWORD 改成你自己的密码
 
-# 2. 启动全栈（首次会自动构建镜像 + 执行迁移 + 灌演示数据）
+# 2. 启动全栈（首次自动构建镜像 + 执行数据库迁移）
 docker compose up -d
 
 # 3. 等健康检查通过
 docker compose ps          # app 显示 (healthy) 即可
 ```
 
-打开 <http://localhost:3000> 即可注册 / 登录。默认 `SEED=true` 会写入演示数据（幂等，重复启动不会重复插入）：
+打开 <http://localhost:3000> 即可注册 / 登录。**默认是空库，没有任何预置账号**，第一个注册的人自己建群、加人即可。
 
-- 主群「拾语产品组」：1 名群主、2 名管理员、8 名成员，22 条中文历史消息、一条 @全体 公告、一条待审批申请；
-- 副群「设计评审室」：用于演示「发现群组 → 申请加入」，主群成员不在其中。
+想要一份现成的演示数据（1 个群主、2 个管理员、8 个成员、22 条中文消息、2 个私聊会话、1 条待审批申请）：
+
+```bash
+docker compose exec app node dist/seed.js   # 或把 .env 里 SEED 设为 true 后重启
+```
+
+种子脚本是幂等的，重复执行不会重复插入；执行后可用 `chenyan / Shiyu@2026Demo` 登录。
 
 常用命令：
 
@@ -117,9 +124,14 @@ npm run dev                   # 同时起后端 3000 与前端 5173
 
 ---
 
-## 测试账号
+## 账号与号码
 
-演示密码统一为 **`Shiyu@2026Demo`**（14 位）。密码策略很宽松，只要 ≥8 位，`12345678` 也能注册。
+默认空库，**没有测试账号**。注册时系统会自动分配：
+
+- **拾语号**（用户）：从 `100001` 起递增，唯一，可在「发起私聊」里按号搜人；
+- **群号**（群组/私聊）：从 `500001` 起递增，唯一，可在「发现群组」里按号搜群。
+
+演示数据里密码统一为 **`Shiyu@2026Demo`**（执行 `npm run seed` 后才有）。密码策略很宽松，只要 ≥8 位，`12345678` 也能注册。
 
 | 用户名 | 昵称 | 角色 | 用途 |
 | --- | --- | --- | --- |
@@ -239,6 +251,9 @@ DELETE /api/groups/:id/members/:uid         踢人（不能踢自己）
 POST   /api/groups/:id/transfer             转让群主
 POST   /api/groups/:id/leave                主动退群
 
+GET    /api/users?q=              找人（昵称 / 用户名 / 拾语号）
+POST   /api/direct                打开或创建与某人的私聊
+
 POST   /api/uploads                上传图片（≤5MB）
 GET    /api/uploads/:name          取图（校验群成员身份）
 GET    /api/health                 健康检查
@@ -262,6 +277,8 @@ WS     /ws                         实时通道（消息、公告、成员、输
 | 7 | 1920 / 1440 / 1280 无横向滚动、无错位 | ✅ | 三档宽度实测 `documentElement.scrollWidth === innerWidth`，截图核对无错位 |
 | 8 | 断网恢复能自动重连并补拉消息 | ✅ | CDP 断网模拟：出现断线提示条，恢复 1 秒内消失，断网期间对方发的消息被补拉进列表 |
 | 9 | 全站无占位文本、无 emoji 功能图标、无假数据 | ✅ | 文案与图标逐屏核对，数据全部来自 seed |
+| 9.1 | 私聊：发起会话、对端实时收到、不可当群管理 | ✅ | 脚本实测：私聊消息 WebSocket 到达，改群名返回 403 `direct_conversation` |
+| 9.2 | 拾语号 / 群号唯一且可搜索 | ✅ | 注册自动分配 100001…、建群 500001…，按号搜人与搜群均命中 |
 | 10 | 空环境 `docker compose up -d` 60 秒内可访问 | ⚠️ 需你本机验证 | 本机未安装 Docker；镜像构建、迁移、健康检查配置已就绪 |
 | 11 | `down` 再 `up` 后数据仍在 | ⚠️ 需你本机验证 | 数据落 `db_data` named volume |
 | 12 | 容器以非 root 运行 | ⚠️ 需你本机验证 | Dockerfile 中 `adduser app` + `USER app` |
@@ -272,6 +289,36 @@ WS     /ws                         实时通道（消息、公告、成员、输
 > 第 10–13、15 项依赖 Docker 守护进程，当前开发机没有 Docker，所以没有实际执行——这一点如实标注，不假装跑过。
 > 其余项目在本机用 `scripts/verify.mjs`（接口/权限/实时）、无头浏览器（布局/断网/交互）实测。
 > 另外做过一次「只装生产依赖 + 跑编译产物」的模拟（`npm ci --omit=dev` 后启动），确认运行阶段没有漏装依赖。
+
+---
+
+## 部署到 Cloudflare Containers（可选）
+
+仓库里已经带好 `wrangler.jsonc` 和 `worker/index.ts`：Worker 把请求转给唯一的容器实例（含 WebSocket 升级），容器里跑的就是本项目的 Dockerfile。
+
+**前提**：Workers Paid 计划；一个外部 Postgres（Neon / Supabase 免费层即可，容器本身没有数据库）。
+
+**用 Workers Builds 部署（不需要本机 Docker）**
+
+1. 代码推到 GitHub，在 Cloudflare 控制台 **Workers & Pages → Create → Connect to Git** 选中仓库。
+2. 表单这样填：
+   - 构建命令：`npm ci`
+   - 部署命令：`npx wrangler deploy`
+   - 预览命令：留空（容器 Worker 不生成预览 URL）
+   - 启用预览构建：关闭
+3. 创建后在 **Settings → Variables and Secrets** 添加：
+   - `DATABASE_URL`（secret）：`postgresql://...?sslmode=require`
+   - `SESSION_SECRET`（secret）：`openssl rand -hex 32`
+   - `SEED`（可选，明文）：`false`
+4. 重新部署一次；首次部署容器要几分钟预热。
+
+**用本机 Docker 部署**：`npm run cf:deploy`（需要 Docker 在跑），首次同样要等容器预热。
+
+**Cloudflare 上的限制**（和 compose 部署不同）：
+
+- 容器磁盘是临时的，**上传的图片重启后会丢**；要长期保留需要接 R2。
+- 单实例运行（`idFromName('shiyu-main')`），内存限流和 WebSocket 广播都在这个实例里；水平扩展要先改造成 Redis + 多实例路由。
+- 空闲 30 分钟容器会休眠，下个请求冷启动约 1–3 秒；有 WebSocket 连接时不会休眠。
 
 ---
 

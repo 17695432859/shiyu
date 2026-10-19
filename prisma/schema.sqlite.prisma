@@ -1,0 +1,165 @@
+// 生产数据库：PostgreSQL
+// 本地开发若没有 Postgres，可用 prisma/schema.sqlite.prisma（由 npm run db:sync 生成）
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String   @id @default(cuid())
+  // 拾语号：对外展示的唯一数字号（类似 QQ 号），注册时自动分配
+  public_id       Int      @unique
+  username        String   @unique
+  display_name    String   @default("")
+  email           String   @unique
+  password_hash   String
+  avatar_color    String
+  created_at      DateTime @default(now())
+  last_seen_at    DateTime @default(now())
+
+  failed_attempts Int      @default(0)
+  locked_until    DateTime?
+
+  sessions      Session[]
+  memberships   Membership[]
+  messages      Message[]
+  read_states   ReadState[]
+  join_requests JoinRequest[] @relation("JoinRequestUser")
+  handled_requests JoinRequest[] @relation("JoinRequestHandler")
+  owned_groups  Group[]       @relation("GroupOwner")
+  audit_logs    AuditLog[]
+  edited_announcements Announcement[]
+}
+
+model Group {
+  id           String   @id @default(cuid())
+  // group：群聊；direct：两人私聊（无群主权限、不进发现列表）
+  type         String   @default("group")
+  // 群号：对外展示的唯一数字号，可被搜索
+  public_id    Int      @unique
+  name         String
+  description  String   @default("")
+  avatar_color String
+  owner_id     String
+  created_at   DateTime @default(now())
+
+  owner         User           @relation("GroupOwner", fields: [owner_id], references: [id], onDelete: Restrict)
+  memberships   Membership[]
+  messages      Message[]
+  announcement  Announcement?
+  join_requests JoinRequest[]
+  read_states   ReadState[]
+
+  @@index([owner_id])
+}
+
+model Membership {
+  id          String    @id @default(cuid())
+  group_id    String
+  user_id     String
+  role        String    @default("member") // owner | admin | member
+  joined_at   DateTime  @default(now())
+  muted_until DateTime?
+
+  group Group @relation(fields: [group_id], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([group_id, user_id])
+  @@index([user_id])
+}
+
+model JoinRequest {
+  id              String    @id @default(cuid())
+  group_id        String
+  user_id         String
+  status          String    @default("pending") // pending | approved | rejected
+  reason          String    @default("")
+  decision_reason String    @default("")
+  created_at      DateTime  @default(now())
+  handled_by      String?
+  handled_at      DateTime?
+
+  group   Group @relation(fields: [group_id], references: [id], onDelete: Cascade)
+  user    User  @relation("JoinRequestUser", fields: [user_id], references: [id], onDelete: Cascade)
+  handler User? @relation("JoinRequestHandler", fields: [handled_by], references: [id], onDelete: SetNull)
+
+  @@index([group_id, status])
+  @@index([user_id, status])
+}
+
+model Announcement {
+  id          String   @id @default(cuid())
+  group_id    String   @unique
+  content     String   @default("")
+  mention_all Boolean  @default(false)
+  updated_by  String
+  updated_at  DateTime @updatedAt
+
+  group  Group @relation(fields: [group_id], references: [id], onDelete: Cascade)
+  editor User  @relation(fields: [updated_by], references: [id], onDelete: Cascade)
+}
+
+model Message {
+  id              Int       @id @default(autoincrement())
+  group_id        String
+  sender_id       String
+  content         String    @default("")
+  type            String    @default("text") // text | image
+  image_path      String?
+  image_width     Int?
+  image_height    Int?
+  created_at      DateTime  @default(now())
+  deleted_at      DateTime?
+  deleted_by      String?
+
+  group  Group @relation(fields: [group_id], references: [id], onDelete: Cascade)
+  sender User  @relation(fields: [sender_id], references: [id], onDelete: Cascade)
+
+  @@index([group_id, id])
+  @@index([group_id, created_at])
+}
+
+model ReadState {
+  id                  String   @id @default(cuid())
+  group_id            String
+  user_id             String
+  last_read_message_id Int     @default(0)
+  updated_at          DateTime @updatedAt
+
+  group Group @relation(fields: [group_id], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([group_id, user_id])
+}
+
+model Session {
+  id         String   @id // HMAC(secret, token)
+  user_id    String
+  created_at DateTime @default(now())
+  expires_at DateTime
+  ip         String   @default("")
+  user_agent String   @default("")
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([expires_at])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actor_id   String
+  action     String
+  target     String   @default("")
+  meta       String   @default("")
+  created_at DateTime @default(now())
+
+  actor User @relation(fields: [actor_id], references: [id], onDelete: Cascade)
+
+  @@index([created_at])
+}

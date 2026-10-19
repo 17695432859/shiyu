@@ -1,0 +1,53 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-shiyu}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在 .env 中设置 POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-shiyu}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-shiyu} -d ${POSTGRES_DB:-shiyu}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    networks:
+      - shiyu
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      # 用同一份密码拼连接串，避免 .env 里两处不一致
+      DATABASE_URL: postgresql://${POSTGRES_USER:-shiyu}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-shiyu}?schema=public
+      HOST: 0.0.0.0
+      PORT: 3000
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    volumes:
+      - uploads_data:/app/data/uploads
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health > /dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
+    networks:
+      - shiyu
+
+volumes:
+  db_data:
+  uploads_data:
+
+networks:
+  shiyu:
+    driver: bridge

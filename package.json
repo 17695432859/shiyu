@@ -1,0 +1,58 @@
+{
+  "name": "shiyu",
+  "version": "1.0.0",
+  "private": true,
+  "description": "拾语 — 群组聊天应用",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:server": "tsx watch server/index.ts",
+    "dev:web": "vite",
+    "build": "npm run build:server && npm run build:web",
+    "build:server": "tsc -p tsconfig.server.json",
+    "build:web": "vite build",
+    "start": "node dist/index.js",
+    "typecheck": "tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.web.json --noEmit",
+    "db:pg:generate": "prisma generate --schema prisma/schema.prisma",
+    "db:pg:migrate": "prisma migrate deploy --schema prisma/schema.prisma",
+    "db:dev": "prisma db push --schema prisma/schema.sqlite.prisma --skip-generate && prisma generate --schema prisma/schema.sqlite.prisma",
+    "db:sync": "node scripts/sync-schema.mjs",
+    "seed": "tsx server/seed.ts",
+    "verify": "node scripts/verify.mjs",
+    "cf:deploy": "wrangler deploy",
+    "cf:dry": "wrangler deploy --dry-run --outdir=.wrangler/dry",
+    "worker:typecheck": "tsc -p worker/tsconfig.json"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.0.2",
+    "@fastify/multipart": "^9.0.1",
+    "@fastify/static": "^8.0.3",
+    "@fastify/websocket": "^11.0.1",
+    "@prisma/client": "^6.2.1",
+    "bcryptjs": "^2.4.3",
+    "fastify": "^5.2.1",
+    "prisma": "^6.2.1",
+    "ws": "^8.18.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@tanstack/react-virtual": "^3.11.2",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^22.10.5",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@types/ws": "^8.5.13",
+    "@vitejs/plugin-react": "^4.3.4",
+    "lucide-react": "^0.400.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.11",
+    "zustand": "^5.0.2",
+    "wrangler": "^4.136.0",
+    "@cloudflare/workers-types": "^5.20261006.1"
+  }
+}
